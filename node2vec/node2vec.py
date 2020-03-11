@@ -75,25 +75,26 @@ class Node2Vec:
         A = nx.to_numpy_array(d_graph)
         n = A.shape[0]
 
-        back = np.zeros((n, n, n))
+        back = np.zeros((n, n * n), dtype=int)
         for i in range(n):
-            back[i, i, :] = A[:, i]
-            back[i, :, i] = A[i, :]
+            col = (i * n) + i
+            back[:, col] = A[:, i]
+            # back[i,col:col+n ] = A[i, :]
+        # back = sps.csr_matrix(back)
+        P = back / self.p
 
-        P = back /self.p
+        # Q = np.repeat(A, n, axis=1)
+        Q = np.tile(A, n)
+        Q *= (1 - back)
 
-        O = np.zeros((n, n, n))
-        for i in range(n):
-            O[i, :, :] = np.apply_along_axis(np.logical_and, 1, A, A[i])
-        O = np.logical_and(O, np.logical_not(back)).astype(float)
+        # mask = np.repeat(A, n, axis=0).reshape((n, n, n))
+        mask = np.repeat(A.flatten()[None, :], n, axis=0)
+        O = Q * mask
 
-        Q = np.zeros((n, n, n))
-        for i in range(n):
-            Q[i, :, :] = np.apply_along_axis(np.logical_and, 1, A, np.logical_not(A[i]))
-        Q = np.logical_and(Q, np.logical_not(back)).astype(float)
+        Q *= (1 - mask)
+        Q = Q.astype(np.float)
         Q /= self.q
-
-        probs = P + O + Q
+        result = P + O + Q
 
 
     def _generate_walks(self) -> list:
