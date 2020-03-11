@@ -72,60 +72,29 @@ class Node2Vec:
         """
 
         d_graph = self.d_graph
+        A = nx.to_numpy_array(d_graph)
+        n = A.shape[0]
 
-        nodes_generator = self.graph.nodes() if self.quiet \
-            else tqdm(self.graph.nodes(), desc='Computing transition probabilities')
+        back = np.zeros((n, n, n))
+        for i in range(n):
+            back[i, i, :] = A[:, i]
+            back[i, :, i] = A[i, :]
 
-        for source in nodes_generator:
+        P = back /self.p
 
-            # Init probabilities dict for first travel
-            if self.PROBABILITIES_KEY not in d_graph[source]:
-                d_graph[source][self.PROBABILITIES_KEY] = dict()
+        O = np.zeros((n, n, n))
+        for i in range(n):
+            O[i, :, :] = np.apply_along_axis(np.logical_and, 1, A, A[i])
+        O = np.logical_and(O, np.logical_not(back)).astype(float)
 
-            for current_node in self.graph.neighbors(source):
+        Q = np.zeros((n, n, n))
+        for i in range(n):
+            Q[i, :, :] = np.apply_along_axis(np.logical_and, 1, A, np.logical_not(A[i]))
+        Q = np.logical_and(Q, np.logical_not(back)).astype(float)
+        Q /= self.q
 
-                # Init probabilities dict
-                if self.PROBABILITIES_KEY not in d_graph[current_node]:
-                    d_graph[current_node][self.PROBABILITIES_KEY] = dict()
+        probs = P + O + Q
 
-                unnormalized_weights = list()
-                d_neighbors = list()
-
-                # Calculate unnormalized weights
-                for destination in self.graph.neighbors(current_node):
-
-                    p = self.sampling_strategy[current_node].get(self.P_KEY,
-                                                                 self.p) if current_node in self.sampling_strategy else self.p
-                    q = self.sampling_strategy[current_node].get(self.Q_KEY,
-                                                                 self.q) if current_node in self.sampling_strategy else self.q
-
-                    if destination == source:  # Backwards probability
-                        ss_weight = self.graph[current_node][destination].get(self.weight_key, 1) * 1 / p
-                    elif destination in self.graph[source]:  # If the neighbor is connected to the source
-                        ss_weight = self.graph[current_node][destination].get(self.weight_key, 1)
-                    else:
-                        ss_weight = self.graph[current_node][destination].get(self.weight_key, 1) * 1 / q
-
-                    # Assign the unnormalized sampling strategy weight, normalize during random walk
-                    unnormalized_weights.append(ss_weight)
-                    d_neighbors.append(destination)
-
-                # Normalize
-                unnormalized_weights = np.array(unnormalized_weights)
-                d_graph[current_node][self.PROBABILITIES_KEY][
-                    source] = unnormalized_weights / unnormalized_weights.sum()
-
-                # Save neighbors
-                d_graph[current_node][self.NEIGHBORS_KEY] = d_neighbors
-
-            # Calculate first_travel weights for source
-            first_travel_weights = []
-
-            for destination in self.graph.neighbors(source):
-                first_travel_weights.append(self.graph[source][destination].get(self.weight_key, 1))
-
-            first_travel_weights = np.array(first_travel_weights)
-            d_graph[source][self.FIRST_TRAVEL_KEY] = first_travel_weights / first_travel_weights.sum()
 
     def _generate_walks(self) -> list:
         """
